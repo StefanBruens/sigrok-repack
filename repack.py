@@ -39,14 +39,16 @@ def main():
             for entry in myzip.infolist():
                 print(entry)
 
-        capturefiles = []
+        segments = []
         cf = None
         unitsize = None
         probes = {}
+        metadata = None
+        sizes = { "old" : 0 }
 
         with myzip.open('metadata') as meta:
-            d = meta.read()
-            s = d.decode()
+            metadata = meta.read()
+            s = metadata.decode()
             if verbose:
                 print("metadata:\n---\n{0}---\n".format(s))
             for l in s.splitlines():
@@ -62,47 +64,56 @@ def main():
                     probes[int(m.group(1))] = m.group(2)
 
         for entry in myzip.infolist():
+            sizes["old"] += entry.compress_size
             if entry.filename.startswith(cf):
                 #verbose and print("Capture segent: {0}".format(entry.filename))
                 verbose and print("Capture segent: {0}".format(repr(entry)))
-                capturefiles.append(entry.filename)
+                segments.append(entry.filename)
 
         assert max(probes.keys()) <= unitsize * 8, \
             "Last probe={0}, unitsize={1}".format(max(probes.keys()), unitsize)
 
-        print(capturefiles)
-        for cf in capturefiles:
+        compressions = { zf.ZIP_DEFLATED : "zip", zf.ZIP_BZIP2 : "bz2", zf.ZIP_LZMA : "lzma" }
+
+        for c in compressions:
+            with zf.ZipFile("{0}.{1}.sr2".format(filename, compressions[c]), mode='w') as outzip:
+                outzip.writestr("version", "3", zf.ZIP_STORED)
+                outzip.writestr("metadata", metadata, zf.ZIP_STORED)
+
+        for cf in segments:
             streams = None
             with myzip.open(cf) as cfdata:
                 b = cfdata.read()
                 streams = logicunzip(b, unitsize, probes)
 
-            with zf.ZipFile(filename + ".zip.sr2", mode='a') as outzip:
-                for s in streams:
-                    outzip.writestr("ZIP/{0}-{1}".format(cf, s), streams[s], zf.ZIP_DEFLATED)
+            for c in compressions:
+                with zf.ZipFile("{0}.{1}.sr2".format(filename, compressions[c]), mode='a') as outzip:
+                    for s in streams:
+                        outzip.writestr("{0}-{1}".format(cf, s), streams[s], c)
+
+        for c in compressions:
+            sizes[compressions[c]] = 0
+            with zf.ZipFile("{0}.{1}.sr2".format(filename, compressions[c]), mode='r') as outzip:
                 for entry in outzip.infolist():
+                    sizes[compressions[c]] += entry.compress_size
                     verbose and print(entry)
 
-            with zf.ZipFile(filename + ".bz2.sr2", mode='a') as outzip:
-                for s in streams:
-                    outzip.writestr("BZ2/{0}-{1}".format(cf, s), streams[s], zf.ZIP_BZIP2)
-                for entry in outzip.infolist():
-                    verbose and print(entry)
-
-            with zf.ZipFile(filename + ".lzma.sr2", mode='a') as outzip:
-                for s in streams:
-                    outzip.writestr("LZMA/{0}-{1}".format(cf, s), streams[s], zf.ZIP_LZMA)
-                for entry in outzip.infolist():
-                    verbose and print(entry)
-
+        print(sizes)
 
 def logicunzip(data, unitsize, probes):
+    def bitshuffle(e, mask):
+        return (e[0] & mask) << 7 | (e[1] & mask) << 6 | \
+               (e[2] & mask) << 5 | (e[3] & mask) << 4 | \
+               (e[4] & mask) << 3 | (e[5] & mask) << 2 | \
+               (e[6] & mask) << 1 | (e[7] & mask) << 0;
+
     assert unitsize <= 2, "Only 16 channels or less supported"
     streams = {}
     for i in range(1, 1 + unitsize * 8):
         if i in probes:
             out = bytearray();
-            print("Extracting probe index {0} [{1}]".format(i, probes[i]))
+            # print("Extracting probe index {0} [{1}]".format(i, probes[i]))
+            print(" {0}".format(i), end='', flush=True)
             full = (len(data) // (8 * unitsize)) * 8 * unitsize
             if unitsize == 1:
                 it = struct.iter_unpack('BBBBBBBB', data[:full])
@@ -111,16 +122,24 @@ def logicunzip(data, unitsize, probes):
 
             mask = 1 << i - 1
             for e in it:
-                w = (e[0] & mask) << 7 | (e[1] & mask) << 6 | \
-                    (e[2] & mask) << 5 | (e[3] & mask) << 4 | \
-                    (e[4] & mask) << 3 | (e[5] & mask) << 2 | \
-                    (e[6] & mask) << 1 | (e[7] & mask) << 0;
-                w = w >> i - 1;
+                w = bitshuffle(e, mask)
+                w = w >> i - 1
                 assert w <= 255
+                out += bytes([w])
+
+            r = len(data) - full
+            if r:
+                if unitsize == 1:
+                    e = struct.unpack('BBBBBBBB', data[full:] + bytes(8 - r))
+                else:
+                    e = struct.unpack('HHHHHHHH', data[full:] + bytes(16 - r))
+                w = bitshuffle(e, mask)
+                w = w >> i - 1
                 out += bytes([w])
 
             streams[i] = out
             # print("Samples: {0}:".format(len(out) * 8));
+    print("")
 
     return streams
 
