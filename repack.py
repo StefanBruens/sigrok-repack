@@ -11,7 +11,7 @@ def usage():
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'hf:vr', ["help", "file=", "verbose", "remap"])
+        opts, args = getopt.getopt(sys.argv[1:], 'hf:vmr', ["help", "file=", "verbose", "remap", "raw"])
     except getopt.GetoptError as err:
         # print help information and exit:
         print(err) # will print something like "option -a not recognized"
@@ -22,6 +22,7 @@ def main():
     verbose = False
     remap = False
     reverse = False
+    raw = False
     for o, a in opts:
         if o == "-v":
             verbose = True
@@ -30,9 +31,10 @@ def main():
             sys.exit()
         elif o in ("-f", "--file"):
             filename = a
-        elif o == "-r":
+        elif o in ("-m", "--remap"):
             remap = True
-            # assert False, "Not implemented"
+        elif o in ("-r", "--raw"):
+            raw = True
         else:
             assert False, "unhandled option"
 
@@ -152,7 +154,11 @@ def main():
                 segments[segment][mapped_stream] = entry.filename
 
 
-        if reverse == True:
+        if raw == True:
+            compressions = {}
+            with open("{0}.raw".format(filename), mode='bw') as outraw:
+                verbose and print("Generating raw file {0}.raw".format(filename))
+        elif reverse == True:
             compressions = { zf.ZIP_DEFLATED : "zip" }
             suffix = ""
         else:
@@ -183,10 +189,16 @@ def main():
 
                 b = logiczip(streams, unitsize, probes)
 
-                print("Writing {0}-{1}".format(cf, segment))
-                for c in compressions:
-                    with zf.ZipFile("{0}.{1}.sr".format(filename, compressions[c]), mode='a') as outzip:
-                        outzip.writestr("{0}-{1}".format(cf, segment), b, c)
+                if raw == True:
+                    print("Appending raw {0}-{1}".format(cf, segment))
+                    with open("{0}.raw".format(filename), mode='ba') as outraw:
+                        l = outraw.write(b);
+
+                else:
+                    print("Writing {0}-{1}".format(cf, segment))
+                    for c in compressions:
+                        with zf.ZipFile("{0}.{1}.sr".format(filename, compressions[c]), mode='a') as outzip:
+                            outzip.writestr("{0}-{1}".format(cf, segment), b, c)
 
             else:
                 cf = segments[segment][0]
