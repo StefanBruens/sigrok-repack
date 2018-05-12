@@ -214,7 +214,7 @@ def main():
 
                 if raw == True:
                     for s in streams:
-                        print("Appending {0}-{1} to {2}-{3}.raw".format(cf, segment, filename, s))
+                        print("Appending Probe {0} [{1}] from {2} to {3}-{4}.raw".format(s, probes[s], cf, filename, s))
                         with open("{0}-{1}.raw".format(filename, s), mode='ba') as outraw:
                             l = outraw.write(streams[s]);
                 else:
