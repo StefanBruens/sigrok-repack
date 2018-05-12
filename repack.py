@@ -156,8 +156,13 @@ def main():
 
         if raw == True:
             compressions = {}
-            with open("{0}.raw".format(filename), mode='bw') as outraw:
-                verbose and print("Generating raw file {0}.raw".format(filename))
+            if (reverse == True):
+                outfiles = [ filename ]
+            else:
+                outfiles = [ "{0}-{1}".format(filename, c) for c in probes.keys() ]
+            for of in outfiles:
+                with open("{0}.raw".format(of), mode='bw') as outraw:
+                    verbose and print("Generating raw file {0}.raw".format(of))
         elif reverse == True:
             compressions = { zf.ZIP_DEFLATED : "zip" }
             suffix = ""
@@ -190,7 +195,7 @@ def main():
                 b = logiczip(streams, unitsize, probes)
 
                 if raw == True:
-                    print("Appending raw {0}-{1}".format(cf, segment))
+                    print("Appending raw {0}-{1} to {2}.raw".format(cf, segment, filename))
                     with open("{0}.raw".format(filename), mode='ba') as outraw:
                         l = outraw.write(b);
 
@@ -207,10 +212,16 @@ def main():
                     b = cfdata.read()
                     streams = logicunzip(b, unitsize, probes)
 
-                for c in compressions:
-                    with zf.ZipFile("{0}.{1}.sr2".format(filename, compressions[c]), mode='a') as outzip:
-                        for s in streams:
-                            outzip.writestr("{0}-{1}".format(cf, s), streams[s], c)
+                if raw == True:
+                    for s in streams:
+                        print("Appending {0}-{1} to {2}-{3}.raw".format(cf, segment, filename, s))
+                        with open("{0}-{1}.raw".format(filename, s), mode='ba') as outraw:
+                            l = outraw.write(streams[s]);
+                else:
+                    for c in compressions:
+                        with zf.ZipFile("{0}.{1}.sr2".format(filename, compressions[c]), mode='a') as outzip:
+                            for s in streams:
+                                outzip.writestr("{0}-{1}".format(cf, s), streams[s], c)
 
         for c in compressions:
             sizes[compressions[c]] = 0
