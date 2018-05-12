@@ -134,7 +134,7 @@ def main():
             sizes["old"] += entry.compress_size
             if entry.filename.startswith(cf):
                 #verbose and print("Capture segment: {0}".format(entry.filename))
-                stream = 0
+                stream = 1
                 if reverse == True:
                     pattern = cf + "-(\d+)-(\d+)$"
                     m = re.match(pattern, entry.filename)
@@ -201,7 +201,7 @@ def main():
                             outzip.writestr("{0}-{1}".format(cf, segment), b, c)
 
             else:
-                cf = segments[segment][0]
+                cf = segments[segment][1]
                 streams = None
                 with myzip.open(cf) as cfdata:
                     b = cfdata.read()
